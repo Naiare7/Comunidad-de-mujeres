@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mujeres_db
+      POSTGRES_USER: mujeres_user
+      POSTGRES_PASSWORD: mujeres_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # healthcheck: comprueba cada 5 segundos si PostgreSQL acepta conexiones.
+    # El backend no arrancará hasta que este check pase.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mujeres_user -d mujeres_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    # La variable de entorno definida aquí tiene prioridad sobre el .env
+    # Usamos "db" porque dentro de Docker los contenedores se comunican por nombre de servicio
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mujeres_user:mujeres_pass@db:5432/mujeres_db
+      SECRET_KEY: super-secret-key-change-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_DAYS: "30"
+    depends_on:
+      db:
+        # "service_healthy" espera a que el healthcheck de db pase antes de arrancar el backend
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

@@ -1,0 +1,117 @@
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--blanco-calido);
+  background-color: var(--rosa-coral);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--rosa-oscuro);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--rosa-coral);
+  background-color: transparent;
+  border: 2px solid var(--rosa-coral);
+  border-radius: var(--radius-sm);
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--melocoton);
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.input-label {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--marron-cacao);
+}
+
+.input-field {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--marron-cacao);
+  background-color: var(--blanco-calido);
+  border: 1.5px solid var(--lila-suave);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  width: 100%;
+}
+
+.input-field::placeholder {
+  color: var(--texto-secundario);
+}
+
+.input-field:focus {
+  border-color: var(--rosa-coral);
+  box-shadow: 0 0 0 3px rgba(244, 132, 95, 0.2);
+}
+
+.input-field.input-error {
+  border-color: var(--error);
+}
+
+.input-field.input-error:focus {
+  box-shadow: 0 0 0 3px rgba(224, 92, 92, 0.2);
+}
+
+.field-error {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--error);
+}
+
+.card {
+  background-color: var(--blanco-calido);
+  border: 1.5px solid var(--melocoton);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-6);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--marron-cacao);
+  background-color: var(--lila-suave);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+}
