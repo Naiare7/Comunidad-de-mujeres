@@ -41,6 +41,31 @@
             {{ thread.author_name }}
           </span>
           <span class="thread-detail__date">{{ formatDate(thread.created_at) }}</span>
+          <span v-if="isEdited(thread)" class="thread-detail__edited-badge" title="Editado el {{ thread.updated_at }}">
+            · editado {{ formatDate(thread.updated_at) }}
+          </span>
+
+            <!-- Botones de editar/eliminar visibles solo para la autora del hilo -->
+            <span v-if="isThreadAuthor" class="thread-detail__owner-actions">
+              <button
+                type="button"
+                class="thread-detail__action-btn"
+                title="Editar hilo"
+                @click="() => {}"
+              >
+                <PencilIcon :size="14" />
+                Editar
+              </button>
+              <button
+                type="button"
+                class="thread-detail__action-btn thread-detail__action-btn--danger"
+                title="Eliminar hilo"
+                @click="() => {}"
+              >
+                <Trash2Icon :size="14" />
+                Eliminar
+              </button>
+            </span>
         </div>
 
         <!-- Contenido del hilo (preservamos saltos de línea) -->
@@ -93,6 +118,9 @@
                 {{ reply.author_name }}
               </span>
               <span class="thread-detail__reply-date">{{ formatDate(reply.created_at) }}</span>
+              <span v-if="isEdited(reply)" class="thread-detail__edited-badge" title="Editado el {{ reply.updated_at }}">
+                · editado {{ formatDate(reply.updated_at) }}
+              </span>
             </div>
 
             <!-- Contenido de la respuesta -->
@@ -108,6 +136,28 @@
               <MessageSquareQuoteIcon :size="14" />
               Citar
             </button>
+
+            <!-- Botones de editar/eliminar visibles solo para la autora de la respuesta -->
+            <span v-if="isReplyAuthor(reply)" class="thread-detail__owner-actions">
+              <button
+                type="button"
+                class="thread-detail__action-btn"
+                title="Editar respuesta"
+                @click="() => {}"
+              >
+                <PencilIcon :size="14" />
+                Editar
+              </button>
+              <button
+                type="button"
+                class="thread-detail__action-btn thread-detail__action-btn--danger"
+                title="Eliminar respuesta"
+                @click="() => {}"
+              >
+                <Trash2Icon :size="14" />
+                Eliminar
+              </button>
+            </span>
           </article>
         </div>
       </section>
@@ -231,6 +281,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { apiFetchJson, apiFetch } from '../services/http'
+// Importamos el store de autenticación para saber qué usuaria está logueada
+import { useAuthStore } from '../stores/auth'
 import {
   LoaderIcon,
   AlertCircleIcon,
@@ -243,12 +295,17 @@ import {
   SendIcon,
   ImageIcon,
   XIcon,
+  PencilIcon,
+  Trash2Icon,
 } from 'lucide-vue-next'
 
 const route = useRoute()
 
 // El ID del hilo viene en la URL (/threads/:id)
 const threadId = route.params.id
+
+// Accedemos al store de autenticación para comparar la usuaria logueada con la autora
+const authStore = useAuthStore()
 
 // ─── Estado ───────────────────────────────────────────────────────────────
 
@@ -373,6 +430,24 @@ function formatDate(dateStr) {
 
 function openImage(url) {
   window.open(url, '_blank')
+}
+
+// ─── Comprobar si la usuaria actual es la autora ─────────────────────────
+
+// Computed que devuelve true si el hilo fue escrito por la usuaria logueada
+const isThreadAuthor = computed(() => {
+  return thread.value?.author_id === authStore.user?.id
+})
+
+// Función que devuelve true si una respuesta fue escrita por la usuaria logueada
+function isReplyAuthor(reply) {
+  return reply.author_id === authStore.user?.id
+}
+
+// Función que devuelve true si un hilo o respuesta ha sido editado (HU-11 Tarea 3)
+// Comparamos las fechas: si updated_at es distinto de created_at, es que se editó
+function isEdited(item) {
+  return item.created_at !== item.updated_at
 }
 
 // ─── Mecanismo para citar una respuesta ──────────────────────────────────
@@ -631,6 +706,15 @@ onMounted(loadThread)
   color: var(--texto-secundario);
 }
 
+/* ─── Marca de editado ──────────────────────────────────────────────────── */
+
+.thread-detail__edited-badge {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--texto-secundario);
+  opacity: 0.8;
+}
+
 /* ─── Contenido ────────────────────────────────────────────────────────── */
 
 .thread-detail__content {
@@ -783,6 +867,44 @@ onMounted(loadThread)
 .thread-detail__quote-btn:hover {
   background-color: var(--lila-suave);
   color: var(--rosa-coral);
+}
+
+/* ─── Botones de la autora (editar / eliminar) ──────────────────────────── */
+
+/* Contenedor que agrupa los botones de editar y eliminar */
+.thread-detail__owner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto; /* Empuja los botones a la derecha */
+}
+
+/* Cada botón de acción (editar / eliminar) tiene el mismo estilo base */
+.thread-detail__action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--lila-oscuro);
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.thread-detail__action-btn:hover {
+  background-color: var(--lila-suave);
+  color: var(--rosa-coral);
+}
+
+/* Variante "danger" para el botón de eliminar (se vuelve rojo al pasar el ratón) */
+.thread-detail__action-btn--danger:hover {
+  background-color: #fce4e4;
+  color: var(--error);
 }
 
 /* ─── Caja de respuesta ────────────────────────────────────────────────── */

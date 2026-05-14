@@ -492,3 +492,433 @@ class TestReplyImages:
         assert response.status_code == 400
         data = response.json()
         assert "imagen" in data["detail"].lower()
+
+
+class TestUpdateReply:
+    """
+    Tests del endpoint PATCH /threads/{thread_id}/replies/{reply_id} (HU-11, Tarea 2).
+    Verifica que solo la autora pueda editar el contenido de una respuesta.
+    """
+
+    REGISTER_URL = "/auth/register"
+
+    REGISTER_PAYLOAD = {
+        "username": "testuser",
+        "email": "test@example.com",
+        "password": "SecurePass1",
+        "confirm_password": "SecurePass1",
+    }
+
+    async def _register_and_get_token(self, client):
+        """Crea una usuaria y devuelve su token JWT."""
+        response = await client.post(self.REGISTER_URL, json=self.REGISTER_PAYLOAD)
+        data = response.json()
+        return data["access_token"]
+
+    async def _create_test_thread(self, client, token, forum_id):
+        """Crea un hilo de prueba y devuelve su ID."""
+        response = await client.post(
+            f"/forums/{forum_id}/threads",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "title": "Hilo para editar respuesta",
+                "content": "Contenido del hilo.",
+            },
+        )
+        data = response.json()
+        return data["id"]
+
+    async def _create_test_reply(self, client, token, thread_id, content="Mi respuesta"):
+        """Crea una respuesta de prueba y devuelve su ID."""
+        response = await client.post(
+            f"/threads/{thread_id}/replies",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"content": content},
+        )
+        data = response.json()
+        return data["id"]
+
+    async def _seed_forums(self):
+        """Inserta los foros de prueba desde seed.py."""
+        from app.seed import FOROS
+
+        async with test_session() as session:
+            for foro_data in FOROS:
+                forum = Forum(
+                    name=foro_data["name"],
+                    description=foro_data["description"],
+                    icon=foro_data["icon"],
+                    display_order=foro_data["display_order"],
+                )
+                session.add(forum)
+                await session.flush()
+
+                for sub_data in foro_data["subforums"]:
+                    subforum = Subforum(
+                        name=sub_data["name"],
+                        description=sub_data["description"],
+                        forum_id=forum.id,
+                    )
+                    session.add(subforum)
+
+            await session.commit()
+
+    async def _get_forum_id(self, name):
+        """Devuelve el ID de un foro buscándolo por nombre."""
+        async with test_session() as session:
+            result = await session.execute(
+                select(Forum).where(Forum.name == name)
+            )
+            forum = result.scalar_one_or_none()
+            return forum.id if forum else None
+
+    # ─── Tests ─────────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_update_reply_success(self, client):
+        """
+        Editar el contenido de una respuesta propia.
+        El endpoint debe devolver 200 con el contenido actualizado.
+        """
+        # 1. Preparamos: foro, usuaria, hilo y respuesta
+        token = await self._register_and_get_token(client)
+        await self._seed_forums()
+
+        forum_id = await self._get_forum_id("Viajes")
+        assert forum_id is not None
+
+        thread_id = await self._create_test_thread(client, token, forum_id)
+        assert thread_id is not None
+
+        reply_id = await self._create_test_reply(
+            client, token, thread_id, "Respuesta original"
+        )
+        assert reply_id is not None
+
+        # 2. Editamos el contenido de la respuesta
+        nuevo_contenido = "Respuesta editada con nueva información."
+        response = await client.patch(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"content": nuevo_contenido},
+        )
+
+        # 3. Verificamos que la respuesta sea correcta
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content"] == nuevo_contenido
+        assert data["author_name"] == "testuser"
+        assert data["thread_id"] == thread_id
+        assert data["is_active"] is True
+
+    @pytest.mark.asyncio
+    async def test_update_reply_unauthorized(self, client):
+        """Sin token, el endpoint debe devolver 403."""
+        response = await client.patch(
+            "/threads/some-id/replies/other-id",
+            json={"content": "Nuevo contenido"},
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_update_reply_not_found(self, client):
+        """Con un ID de respuesta que no existe, el endpoint devuelve 404."""
+        import uuid
+        token = await self._register_and_get_token(client)
+
+        fake_thread_id = str(uuid.uuid4())
+        fake_reply_id = str(uuid.uuid4())
+        response = await client.patch(
+            f"/threads/{fake_thread_id}/replies/{fake_reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"content": "Nuevo contenido"},
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "no encontrada" in data["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_update_reply_not_author(self, client):
+        """
+        Una usuaria distinta a la autora intenta editar la respuesta.
+        El endpoint debe devolver 403.
+        """
+        # 1. Registramos a la primera usuaria (autora de la respuesta)
+        token = await self._register_and_get_token(client)
+        await self._seed_forums()
+
+        forum_id = await self._get_forum_id("Viajes")
+        assert forum_id is not None
+
+        thread_id = await self._create_test_thread(client, token, forum_id)
+        reply_id = await self._create_test_reply(
+            client, token, thread_id, "Respuesta de testuser"
+        )
+
+        # 2. Registramos a una segunda usuaria (no es la autora)
+        OTHER_PAYLOAD = {
+            "username": "otheruser",
+            "email": "other@example.com",
+            "password": "SecurePass1",
+            "confirm_password": "SecurePass1",
+        }
+        response = await client.post(self.REGISTER_URL, json=OTHER_PAYLOAD)
+        other_token = response.json()["access_token"]
+
+        # 3. La segunda usuaria intenta editar la respuesta de la primera
+        response = await client.patch(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {other_token}"},
+            json={"content": "Intento de edición ajena"},
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "permiso" in data["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_update_reply_empty_content(self, client):
+        """
+        Contenido vacío: el endpoint debe devolver 422 por la validación
+        de Pydantic (min_length=1).
+        """
+        token = await self._register_and_get_token(client)
+        await self._seed_forums()
+
+        forum_id = await self._get_forum_id("Viajes")
+        assert forum_id is not None
+
+        thread_id = await self._create_test_thread(client, token, forum_id)
+        reply_id = await self._create_test_reply(
+            client, token, thread_id, "Respuesta para probar validación"
+        )
+
+        response = await client.patch(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"content": ""},
+        )
+
+        assert response.status_code == 422
+
+
+class TestDeleteReply:
+    """
+    Tests del endpoint DELETE /threads/{thread_id}/replies/{reply_id} (HU-11, Tarea 4).
+    Verifica que solo la autora pueda eliminar (soft-delete) una respuesta
+    y que el contenido se reemplace por "Mensaje eliminado".
+    """
+
+    REGISTER_URL = "/auth/register"
+
+    REGISTER_PAYLOAD = {
+        "username": "testuser",
+        "email": "test@example.com",
+        "password": "SecurePass1",
+        "confirm_password": "SecurePass1",
+    }
+
+    async def _register_and_get_token(self, client):
+        """Crea una usuaria y devuelve su token JWT."""
+        response = await client.post(self.REGISTER_URL, json=self.REGISTER_PAYLOAD)
+        data = response.json()
+        return data["access_token"]
+
+    async def _create_test_thread(self, client, token, forum_id):
+        """Crea un hilo de prueba y devuelve su ID."""
+        response = await client.post(
+            f"/forums/{forum_id}/threads",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "title": "Hilo para eliminar respuesta",
+                "content": "Contenido del hilo.",
+            },
+        )
+        data = response.json()
+        return data["id"]
+
+    async def _create_test_reply(self, client, token, thread_id, content="Mi respuesta"):
+        """Crea una respuesta de prueba y devuelve su ID."""
+        response = await client.post(
+            f"/threads/{thread_id}/replies",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"content": content},
+        )
+        data = response.json()
+        return data["id"]
+
+    async def _seed_forums(self):
+        """Inserta los foros de prueba desde seed.py."""
+        from app.seed import FOROS
+
+        async with test_session() as session:
+            for foro_data in FOROS:
+                forum = Forum(
+                    name=foro_data["name"],
+                    description=foro_data["description"],
+                    icon=foro_data["icon"],
+                    display_order=foro_data["display_order"],
+                )
+                session.add(forum)
+                await session.flush()
+
+                for sub_data in foro_data["subforums"]:
+                    subforum = Subforum(
+                        name=sub_data["name"],
+                        description=sub_data["description"],
+                        forum_id=forum.id,
+                    )
+                    session.add(subforum)
+
+            await session.commit()
+
+    async def _get_forum_id(self, name):
+        """Devuelve el ID de un foro buscándolo por nombre."""
+        async with test_session() as session:
+            result = await session.execute(
+                select(Forum).where(Forum.name == name)
+            )
+            forum = result.scalar_one_or_none()
+            return forum.id if forum else None
+
+    # ─── Tests ─────────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_delete_reply_success(self, client):
+        """
+        Eliminar una respuesta propia.
+        El endpoint devuelve 200 y la respuesta queda marcada como inactiva
+        con el contenido reemplazado por "Mensaje eliminado" en la BD.
+        """
+        # 1. Preparamos: foro, usuaria, hilo y respuesta
+        token = await self._register_and_get_token(client)
+        await self._seed_forums()
+
+        forum_id = await self._get_forum_id("Viajes")
+        assert forum_id is not None
+
+        thread_id = await self._create_test_thread(client, token, forum_id)
+        assert thread_id is not None
+
+        reply_id = await self._create_test_reply(
+            client, token, thread_id, "Respuesta que se va a eliminar"
+        )
+        assert reply_id is not None
+
+        # 2. Eliminamos la respuesta
+        response = await client.delete(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # 3. Verificamos la respuesta
+        assert response.status_code == 200
+        data = response.json()
+        assert "mensaje" in data
+        assert "eliminada" in data["mensaje"].lower()
+
+        # 4. Verificamos directamente en la BD que el soft-delete funcionó
+        async with test_session() as session:
+            result = await session.execute(
+                select(Reply).where(Reply.id == reply_id)
+            )
+            reply = result.scalar_one()
+            assert reply.is_active is False
+            assert reply.content == "Mensaje eliminado"
+
+    @pytest.mark.asyncio
+    async def test_delete_reply_unauthorized(self, client):
+        """Sin token, el endpoint debe devolver 403."""
+        response = await client.delete("/threads/some-id/replies/other-id")
+
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_delete_reply_not_found(self, client):
+        """Con un ID de respuesta que no existe, el endpoint devuelve 404."""
+        import uuid
+        token = await self._register_and_get_token(client)
+
+        fake_thread_id = str(uuid.uuid4())
+        fake_reply_id = str(uuid.uuid4())
+        response = await client.delete(
+            f"/threads/{fake_thread_id}/replies/{fake_reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "no encontrada" in data["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_delete_reply_not_author(self, client):
+        """
+        Una usuaria distinta a la autora intenta eliminar la respuesta.
+        El endpoint debe devolver 403.
+        """
+        # 1. Registramos a la primera usuaria (autora de la respuesta)
+        token = await self._register_and_get_token(client)
+        await self._seed_forums()
+
+        forum_id = await self._get_forum_id("Viajes")
+        assert forum_id is not None
+
+        thread_id = await self._create_test_thread(client, token, forum_id)
+        reply_id = await self._create_test_reply(
+            client, token, thread_id, "Respuesta de testuser"
+        )
+
+        # 2. Registramos a una segunda usuaria (no es la autora)
+        OTHER_PAYLOAD = {
+            "username": "otheruser",
+            "email": "other@example.com",
+            "password": "SecurePass1",
+            "confirm_password": "SecurePass1",
+        }
+        response = await client.post(self.REGISTER_URL, json=OTHER_PAYLOAD)
+        other_token = response.json()["access_token"]
+
+        # 3. La segunda usuaria intenta eliminar la respuesta de la primera
+        response = await client.delete(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "permiso" in data["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_delete_reply_already_deleted(self, client):
+        """
+        Intentar eliminar una respuesta que ya fue eliminada.
+        El endpoint debe devolver 404.
+        """
+        # 1. Preparamos y eliminamos la respuesta una vez
+        token = await self._register_and_get_token(client)
+        await self._seed_forums()
+
+        forum_id = await self._get_forum_id("Viajes")
+        assert forum_id is not None
+
+        thread_id = await self._create_test_thread(client, token, forum_id)
+        reply_id = await self._create_test_reply(
+            client, token, thread_id, "Respuesta para eliminar dos veces"
+        )
+
+        # Primera eliminación: debe funcionar
+        response = await client.delete(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+
+        # 2. Intentamos eliminar la misma respuesta otra vez
+        response = await client.delete(
+            f"/threads/{thread_id}/replies/{reply_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404

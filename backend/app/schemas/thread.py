@@ -25,6 +25,13 @@ class CreateThreadRequest(BaseModel):
     subforum_id: str | None = None
 
 
+class UpdateThreadRequest(BaseModel):
+    """Datos que la usuaria envía para editar el contenido de un hilo (HU-11)."""
+
+    # Nuevo contenido del hilo: obligatorio, al menos 1 carácter.
+    content: str = Field(min_length=1)
+
+
 class ThreadResponse(BaseModel):
     """Datos de un hilo que se muestran en el listado."""
 

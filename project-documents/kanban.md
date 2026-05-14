@@ -63,11 +63,12 @@
 - ~~Tarea 6~~ ✅
 ---
 | HU-11 | Foros | Editar o eliminar publicación |
-- **Tarea 1**
-- **Tarea 2**
-- **Tarea 3**
-- **Tarea 4**
-- **Tarea 5**
+- ~~Tarea 1~~ ✅
+- ~~Tarea 2~~ ✅
+- ~~Tarea 3~~ ✅
+- ~~Tarea 4~~ ✅
+- ~~Tarea 5~~ ✅
+-
 ---
 | HU-12 | Foros | Reportar contenido |
 - **Tarea 1**

@@ -19,6 +19,13 @@ class CreateReplyRequest(BaseModel):
     parent_reply_id: str | None = None
 
 
+class UpdateReplyRequest(BaseModel):
+    """Datos que la usuaria envía para editar el contenido de una respuesta (HU-11)."""
+
+    # Nuevo contenido de la respuesta: obligatorio, al menos 1 carácter.
+    content: str = Field(min_length=1)
+
+
 class ReplyResponse(BaseModel):
     """Datos de una respuesta que se devuelven al frontend."""
 
